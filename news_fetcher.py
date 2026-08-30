@@ -30,42 +30,79 @@ def similarity_score(title1, title2):
 
 
 def parse_date(article):
-    """
-    Convert RSS publication date into a Python datetime.
-    """
     try:
-        if hasattr(article, "published_parsed") and article.published_parsed:
+        if article.get("published_parsed"):
             return datetime(
                 *article.published_parsed[:6],
                 tzinfo=timezone.utc
             )
 
-        if hasattr(article, "updated_parsed") and article.updated_parsed:
+        if article.get("updated_parsed"):
             return datetime(
                 *article.updated_parsed[:6],
                 tzinfo=timezone.utc
             )
-
     except Exception:
         pass
 
     return None
 
 
-def freshness_score(article):
-    """
-    Newer articles receive much higher scores.
-    Articles older than 7 days receive zero freshness points.
-    """
-    published_date = article.get("date")
+def get_category(title, source):
+    text = f" {title.lower()} "
 
-    if not published_date:
+    gaming_words = [
+        " game ",
+        " gaming ",
+        " playstation ",
+        " xbox ",
+        " nintendo ",
+        " steam ",
+        " elden ring ",
+        " fps ",
+        " rpg ",
+        " dayz ",
+        " ps3 ",
+        " wii "
+    ]
+
+    ai_words = [
+        " openai ",
+        " anthropic ",
+        " chatgpt ",
+        " gemini ",
+        " claude ",
+        " nvidia ",
+        " artificial intelligence ",
+        " machine learning ",
+        " ai model ",
+        " generative ai ",
+        " ai "
+    ]
+
+    if any(word in text for word in gaming_words):
+        return "Gaming"
+
+    if any(word in text for word in ai_words):
+        return "AI"
+
+    if source in ["OpenAI", "Google AI", "TechCrunch AI", "The Verge AI"]:
+        return "AI"
+
+    if source == "PC Gamer":
+        return "Gaming"
+
+    return "Technology"
+
+
+def freshness_score(article):
+    date = article.get("date")
+
+    if not date:
         return 0
 
     now = datetime.now(timezone.utc)
-    age = now - published_date
-
-    hours_old = age.total_seconds() / 3600
+    hours_old = (now - date).total_seconds() / 3600
 
     if hours_old < 6:
         return 40
@@ -79,15 +116,14 @@ def freshness_score(article):
         return 12
     elif hours_old < 168:
         return 5
-    else:
-        return 0
+
+    return 0
 
 
 def calculate_score(article):
     title = article["title"].lower()
     score = 0
 
-    # Source reliability
     source_scores = {
         "OpenAI": 20,
         "Google AI": 20,
@@ -98,79 +134,73 @@ def calculate_score(article):
 
     score += source_scores.get(article["source"], 10)
 
-    # Important AI terms
-    ai_keywords = [
+    important_ai = [
         "openai",
         "anthropic",
-        "google ai",
-        "gemini",
         "chatgpt",
-        "artificial intelligence",
-        "nvidia",
+        "gemini",
         "claude",
+        "nvidia",
+        "artificial intelligence",
         "ai model",
-        "language model",
         "generative ai",
-        "machine learning",
     ]
 
-    for keyword in ai_keywords:
-        if keyword in title:
+    for word in important_ai:
+        if word in title:
             score += 5
 
-    # Important news terms
-    news_keywords = [
+    important_news = [
         "launch",
         "launches",
         "announces",
         "announced",
         "introduces",
         "introduced",
-        "releases",
         "released",
-        "acquires",
+        "release",
         "acquisition",
+        "acquires",
         "lawsuit",
         "partnership",
         "new model",
     ]
 
-    for keyword in news_keywords:
-        if keyword in title:
-            score += 3
+    for word in important_news:
+        if word in title:
+            score += 4
 
-    # Gaming terms
-    gaming_keywords = [
+    gaming_words = [
         "elden ring",
         "playstation",
         "xbox",
         "nintendo",
         "steam",
-        "game",
         "gaming",
+        "game",
         "fps",
         "rpg",
     ]
 
-    for keyword in gaming_keywords:
-        if keyword in title:
+    for word in gaming_words:
+        if word in title:
             score += 3
 
-    # Freshness is very important
     score += freshness_score(article)
 
     return score
 
 
 def fetch_news():
+
     print("=" * 70)
-    print("AI NEWS ENGINE - SMART NEWS FILTER v2")
+    print("AI NEWS ENGINE - SMART SELECTION v3")
     print("=" * 70)
 
     all_articles = []
 
     # ---------------------------------------------------------
-    # 1. Fetch RSS feeds
+    # FETCH RSS
     # ---------------------------------------------------------
 
     for source, url in RSS_FEEDS.items():
@@ -195,12 +225,16 @@ def fetch_news():
 
                 date = parse_date(article)
 
+                if not date:
+                    continue
+
                 all_articles.append({
                     "source": source,
                     "title": title,
                     "link": link,
                     "published": published,
                     "date": date,
+                    "category": get_category(title, source)
                 })
 
         except Exception as error:
@@ -211,7 +245,7 @@ def fetch_news():
     print("=" * 70)
 
     # ---------------------------------------------------------
-    # 2. Remove duplicates
+    # REMOVE DUPLICATES
     # ---------------------------------------------------------
 
     unique_articles = []
@@ -222,12 +256,11 @@ def fetch_news():
 
         for existing in unique_articles:
 
-            similarity = similarity_score(
+            if similarity_score(
                 article["title"],
                 existing["title"]
-            )
+            ) >= 0.60:
 
-            if similarity >= 0.60:
                 duplicate = True
                 break
 
@@ -237,17 +270,14 @@ def fetch_news():
     print(f"AFTER DUPLICATE FILTER: {len(unique_articles)}")
 
     # ---------------------------------------------------------
-    # 3. Remove very old news
+    # LAST 7 DAYS ONLY
     # ---------------------------------------------------------
-
-    recent_articles = []
 
     now = datetime.now(timezone.utc)
 
-    for article in unique_articles:
+    recent_articles = []
 
-        if not article["date"]:
-            continue
+    for article in unique_articles:
 
         age = now - article["date"]
 
@@ -257,15 +287,11 @@ def fetch_news():
     print(f"AFTER 7-DAY FILTER: {len(recent_articles)}")
 
     # ---------------------------------------------------------
-    # 4. Score articles
+    # SCORE
     # ---------------------------------------------------------
 
     for article in recent_articles:
         article["score"] = calculate_score(article)
-
-    # ---------------------------------------------------------
-    # 5. Sort by score
-    # ---------------------------------------------------------
 
     recent_articles.sort(
         key=lambda article: article["score"],
@@ -273,19 +299,73 @@ def fetch_news():
     )
 
     # ---------------------------------------------------------
-    # 6. Select top 4
+    # SELECT NEWS
+    #
+    # Maximum 2 articles from each source.
+    # Try to include both AI and Gaming.
     # ---------------------------------------------------------
 
-    top_articles = recent_articles[:4]
+    selected = []
+
+    source_count = {}
+    category_count = {}
+
+    # First: try to get at least one article from each category
+    for preferred_category in ["AI", "Gaming"]:
+
+        for article in recent_articles:
+
+            if article in selected:
+                continue
+
+            source = article["source"]
+
+            if article["category"] != preferred_category:
+                continue
+
+            if source_count.get(source, 0) >= 2:
+                continue
+
+            selected.append(article)
+
+            source_count[source] = source_count.get(source, 0) + 1
+            category_count[preferred_category] = (
+                category_count.get(preferred_category, 0) + 1
+            )
+
+            break
+
+    # Second: fill remaining positions with highest scoring stories
+    for article in recent_articles:
+
+        if article in selected:
+            continue
+
+        source = article["source"]
+
+        if source_count.get(source, 0) >= 2:
+            continue
+
+        selected.append(article)
+
+        source_count[source] = source_count.get(source, 0) + 1
+
+        if len(selected) >= 4:
+            break
+
+    # ---------------------------------------------------------
+    # FINAL OUTPUT
+    # ---------------------------------------------------------
 
     print("\n" + "=" * 70)
     print("TOP STORIES")
     print("=" * 70)
 
-    for index, article in enumerate(top_articles, start=1):
+    for index, article in enumerate(selected, start=1):
 
         print(f"\n#{index}")
         print(f"SCORE: {article['score']}")
+        print(f"CATEGORY: {article['category']}")
         print(f"SOURCE: {article['source']}")
         print(f"TITLE: {article['title']}")
         print(f"DATE: {article['published']}")
