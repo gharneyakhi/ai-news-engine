@@ -12,7 +12,14 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+- name: Check repository files
+  run: |
+    echo "Current directory:"
+    pwd
+    echo "Repository files:"
+    ls -la
+    echo "Git status:"
+    git status
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
