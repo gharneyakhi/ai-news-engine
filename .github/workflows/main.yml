@@ -24,7 +24,13 @@ jobs:
       - name: Run news fetcher
         run: python news_fetcher.py
 
-      - name: Test Gemini
+      - name: Generate Persian articles
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python gemini_test.py
+        run: python article_generator.py
+
+      - name: Upload generated articles
+        uses: actions/upload-artifact@v4
+        with:
+          name: generated-articles
+          path: articles/
