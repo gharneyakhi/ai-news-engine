@@ -12,14 +12,16 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-- name: Check repository files
-  run: |
-    echo "Current directory:"
-    pwd
-    echo "Repository files:"
-    ls -la
-    echo "Git status:"
-    git status
+
+      - name: Check repository files
+        run: |
+          echo "Current directory:"
+          pwd
+          echo "Repository files:"
+          ls -la
+          echo "Git status:"
+          git status
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -30,6 +32,11 @@ jobs:
 
       - name: Run news fetcher
         run: python news_fetcher.py
+
+      - name: Test Gemini
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python gemini_test.py
 
       - name: Generate Persian articles
         env:
