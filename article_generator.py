@@ -1,3 +1,4 @@
+```python
 import os
 import re
 import time
@@ -476,10 +477,6 @@ def select_articles(articles):
 
     source_count = {}
 
-    # --------------------------------------------------------
-    # Prefer one AI + one Gaming
-    # --------------------------------------------------------
-
     for category in [
         "AI",
         "Gaming"
@@ -511,10 +508,6 @@ def select_articles(articles):
             )
 
             break
-
-    # --------------------------------------------------------
-    # Fill remaining slots
-    # --------------------------------------------------------
 
     for article in articles:
 
@@ -578,7 +571,6 @@ def fetch_article_page(url):
             "html.parser"
         )
 
-        # Remove elements that are not article content
         for element in soup([
             "script",
             "style",
@@ -593,10 +585,6 @@ def fetch_article_page(url):
 
             element.decompose()
 
-        # ----------------------------------------------------
-        # Try semantic article tag first
-        # ----------------------------------------------------
-
         article_tag = soup.find(
             "article"
         )
@@ -609,10 +597,6 @@ def fetch_article_page(url):
             )
 
         else:
-
-            # ------------------------------------------------
-            # Try common content containers
-            # ------------------------------------------------
 
             candidates = soup.find_all(
                 [
@@ -645,10 +629,6 @@ def fetch_article_page(url):
         )
 
         text = text.strip()
-
-        # ----------------------------------------------------
-        # Prevent absurdly large prompts
-        # ----------------------------------------------------
 
         max_chars = 30000
 
@@ -775,7 +755,7 @@ TAGS:
 
 
 # ============================================================
-# GENERATE
+# GENERATE ARTICLE WITH RETRY
 # ============================================================
 
 def generate_article(
@@ -797,34 +777,109 @@ def generate_article(
         source_text
     )
 
-    try:
+    max_attempts = 3
 
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt
-        )
+    retry_delays = [
+        30,
+        60,
+        120
+    ]
 
-        if not response.text:
-
-            print(
-                "Gemini returned empty response."
-            )
-
-            return None
-
-        return response.text.strip()
-
-    except Exception as error:
+    for attempt in range(
+        1,
+        max_attempts + 1
+    ):
 
         print(
-            f"Gemini ERROR: {error}"
+            f"Gemini attempt "
+            f"{attempt}/{max_attempts}"
         )
 
-        return None
+        try:
+
+            response = client.models.generate_content(
+                model=GEMINI_MODEL,
+                contents=prompt
+            )
+
+            if not response.text:
+
+                print(
+                    "Gemini returned empty response."
+                )
+
+            else:
+
+                print(
+                    "Gemini generation successful."
+                )
+
+                return response.text.strip()
+
+        except Exception as error:
+
+            error_text = str(error)
+
+            print(
+                f"Gemini ERROR on attempt "
+                f"{attempt}: {error_text}"
+            )
+
+            temporary_errors = [
+                "503",
+                "429",
+                "500",
+                "502",
+                "504",
+                "UNAVAILABLE",
+                "RESOURCE_EXHAUSTED",
+                "DEADLINE_EXCEEDED",
+                "timeout",
+                "timed out"
+            ]
+
+            should_retry = any(
+                error_code.lower()
+                in error_text.lower()
+                for error_code in temporary_errors
+            )
+
+            if not should_retry:
+
+                print(
+                    "Non-retryable error. "
+                    "Skipping article."
+                )
+
+                return None
+
+            if attempt < max_attempts:
+
+                delay = retry_delays[
+                    attempt - 1
+                ]
+
+                print(
+                    f"Temporary Gemini error. "
+                    f"Waiting {delay} seconds before retry..."
+                )
+
+                time.sleep(
+                    delay
+                )
+
+            else:
+
+                print(
+                    "All Gemini attempts failed. "
+                    "Skipping article."
+                )
+
+    return None
 
 
 # ============================================================
-# SAVE
+# SAVE ARTICLE
 # ============================================================
 
 def save_article(
@@ -968,10 +1023,6 @@ def main():
 
     for article in selected:
 
-        # ----------------------------------------------------
-        # Get REAL article text
-        # ----------------------------------------------------
-
         source_text = fetch_article_page(
             article["link"]
         )
@@ -984,10 +1035,6 @@ def main():
             )
 
             continue
-
-        # ----------------------------------------------------
-        # Generate Persian article
-        # ----------------------------------------------------
 
         content = generate_article(
             client,
@@ -1003,10 +1050,6 @@ def main():
             )
 
             generated_count += 1
-
-        # ----------------------------------------------------
-        # Avoid hammering APIs/sites
-        # ----------------------------------------------------
 
         time.sleep(3)
 
@@ -1027,3 +1070,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+```
