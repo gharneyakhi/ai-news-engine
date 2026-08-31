@@ -4,92 +4,67 @@ from google import genai
 
 PRIMARY_MODEL = "gemini-3.6-flash"
 BACKUP_MODEL = "gemini-3.5-flash-lite"
+MAX_RETRIES = 4
+RETRY_DELAY = 8
 
 api_key = os.environ.get("GEMINI_API_KEY")
-
-if not api_key:
-raise RuntimeError("GEMINI_API_KEY is missing.")
-
 client = genai.Client(api_key=api_key)
 
-prompt = "Reply with exactly: Gemini connection successful."
+print("=" * 70)
+print("GEMINI CONNECTION TEST")
+print("=" * 70)
 
-models_to_try = [
-PRIMARY_MODEL,
-BACKUP_MODEL
-]
-
+model = PRIMARY_MODEL
 success = False
 
-for model in models_to_try:
+for attempt in range(MAX_RETRIES):
 
 ```
-print("=" * 70)
-print("TESTING MODEL:", model)
-print("=" * 70)
+print("Model:", model)
+print("Attempt:", attempt + 1, "of", MAX_RETRIES)
 
-for attempt in range(1, 5):
+try:
+    response = client.models.generate_content(
+        model=model,
+        contents="Reply with exactly: Gemini connection successful."
+    )
+    print(response.text)
+    success = True
+    break
+except Exception as error:
+    print("ERROR:", error)
+    time.sleep(RETRY_DELAY)
+```
 
-    print("Attempt", attempt, "of 4")
+if success == False:
+
+```
+print("Primary model failed.")
+print("Trying backup model.")
+
+model = BACKUP_MODEL
+
+for attempt in range(MAX_RETRIES):
+
+    print("Model:", model)
+    print("Attempt:", attempt + 1, "of", MAX_RETRIES)
 
     try:
-
         response = client.models.generate_content(
             model=model,
-            contents=prompt
+            contents="Reply with exactly: Gemini connection successful."
         )
-
-        if response.text:
-            print()
-            print("SUCCESS!")
-            print(response.text)
-            success = True
-            break
-
+        print(response.text)
+        success = True
+        break
     except Exception as error:
-
         print("ERROR:", error)
-
-        error_text = str(error)
-
-        if "503" in error_text or "UNAVAILABLE" in error_text:
-
-            if attempt < 4:
-                wait_time = attempt * 8
-
-                print(
-                    "Temporary server problem."
-                )
-
-                print(
-                    "Waiting",
-                    wait_time,
-                    "seconds..."
-                )
-
-                time.sleep(wait_time)
-
-            else:
-                print(
-                    "Maximum retries reached."
-                )
-
-        else:
-            print(
-                "Non-retryable error."
-            )
-            break
-
-if success:
-    break
+        time.sleep(RETRY_DELAY)
 ```
 
-if not success:
-raise RuntimeError(
-"All Gemini model attempts failed."
-)
+if success == False:
+raise RuntimeError("All Gemini attempts failed.")
 
-print()
 print("=" * 70)
 print("GEMINI TEST PASSED")
 print("=" * 70)
