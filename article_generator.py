@@ -1,5 +1,6 @@
 import os
 import feedparser
+from datetime import datetime
 
 from google import genai
 
@@ -14,6 +15,9 @@ RSS_FEEDS = {
 
 
 GEMINI_MODEL = "gemini-3.6-flash"
+
+OUTPUT_DIR = "articles"
+
 
 
 def create_client():
@@ -43,7 +47,7 @@ def fetch_news():
 
         feed = feedparser.parse(url)
 
-        for item in feed.entries[:5]:
+        for item in feed.entries[:3]:
 
             title = item.get(
                 "title",
@@ -63,6 +67,7 @@ def fetch_news():
                     "link": link
                 })
 
+
     return articles
 
 
@@ -73,7 +78,7 @@ def generate_article(
 ):
 
     prompt = f"""
-Write a Persian technology news article.
+Write a professional Persian technology news article.
 
 Title:
 {article['title']}
@@ -85,10 +90,10 @@ URL:
 {article['link']}
 
 Rules:
-- Write natural Persian.
-- Do not invent facts.
-- Write like a professional news website.
-- Include headline and summary.
+- Natural Persian
+- No invented information
+- Professional journalism style
+- Include headline, summary and article body
 """
 
 
@@ -102,12 +107,56 @@ Rules:
 
 
 
+def save_article(
+    article,
+    content
+):
+
+    os.makedirs(
+        OUTPUT_DIR,
+        exist_ok=True
+    )
+
+
+    filename = (
+        datetime.now()
+        .strftime("%Y-%m-%d-%H-%M")
+        +
+        ".md"
+    )
+
+
+    path = os.path.join(
+        OUTPUT_DIR,
+        filename
+    )
+
+
+    with open(
+        path,
+        "w",
+        encoding="utf-8"
+    ) as file:
+
+        file.write(
+            "# "
+            +
+            article["title"]
+            +
+            "\n\n"
+        )
+
+        file.write(content)
+
+
+    print(
+        "Saved:",
+        path
+    )
+
+
+
 def main():
-
-    print("=" * 60)
-    print("AI ARTICLE GENERATOR TEST")
-    print("=" * 60)
-
 
     client = create_client()
 
@@ -124,14 +173,16 @@ def main():
     )
 
 
-    result = generate_article(
+    content = generate_article(
         client,
         article
     )
 
 
-    print()
-    print(result)
+    save_article(
+        article,
+        content
+    )
 
 
 
