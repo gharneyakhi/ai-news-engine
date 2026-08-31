@@ -8,12 +8,6 @@ from bs4 import BeautifulSoup
 from datetime import datetime, timezone, timedelta
 from google import genai
 
-# ============================================================
-
-# CONFIGURATION
-
-# ============================================================
-
 RSS_FEEDS = {
 "OpenAI": "https://openai.com/news/rss.xml",
 "Google AI": "https://blog.google/technology/ai/rss/",
@@ -24,7 +18,6 @@ RSS_FEEDS = {
 
 ARTICLES_PER_RUN = 3
 MAX_ARTICLE_AGE_DAYS = 7
-
 OUTPUT_DIR = "articles"
 
 GEMINI_MODEL = "gemini-3.6-flash"
@@ -35,94 +28,47 @@ MAX_SOURCE_CHARS = 12000
 MAX_RETRIES = 3
 RETRY_DELAY = 8
 
-# ============================================================
-
-# GEMINI CLIENT
-
-# ============================================================
-
 def create_gemini_client():
-
-```
 api_key = os.environ.get("GEMINI_API_KEY")
 
+```
 if not api_key:
     raise RuntimeError(
-        "GEMINI_API_KEY is missing. "
-        "Check GitHub Actions Secrets."
+        "GEMINI_API_KEY is missing. Check GitHub Actions Secrets."
     )
 
 return genai.Client(api_key=api_key)
 ```
 
-# ============================================================
-
-# TEXT HELPERS
-
-# ============================================================
-
 def clean_text(text):
-
-```
 text = text.lower()
-
-text = re.sub(
-    r"[^a-z0-9\s]",
-    " ",
-    text
-)
-
-text = re.sub(
-    r"\s+",
-    " ",
-    text
-)
-
+text = re.sub(r"[^a-z0-9\s]", " ", text)
+text = re.sub(r"\s+", " ", text)
 return text.strip()
-```
 
 def similarity_score(title1, title2):
+words1 = set(clean_text(title1).split())
+words2 = set(clean_text(title2).split())
 
 ```
-words1 = set(
-    clean_text(title1).split()
-)
-
-words2 = set(
-    clean_text(title2).split()
-)
-
 if not words1 or not words2:
     return 0
 
 common = words1.intersection(words2)
 
-return len(common) / min(
-    len(words1),
-    len(words2)
-)
+return len(common) / min(len(words1), len(words2))
 ```
-
-# ============================================================
-
-# DATE
-
-# ============================================================
 
 def parse_date(article):
+try:
+if article.get("published_parsed"):
+return datetime(
+*article.published_parsed[:6],
+tzinfo=timezone.utc
+)
 
 ```
-try:
-
-    if article.get("published_parsed"):
-
-        return datetime(
-            *article.published_parsed[:6],
-            tzinfo=timezone.utc
-        )
-
     if article.get("updated_parsed"):
-
         return datetime(
             *article.updated_parsed[:6],
             tzinfo=timezone.utc
@@ -134,17 +80,10 @@ except Exception:
 return None
 ```
 
-# ============================================================
-
-# CATEGORY
-
-# ============================================================
-
 def get_category(title, source):
-
-```
 text = f" {title.lower()} "
 
+```
 gaming_words = [
     " game ",
     " gaming ",
@@ -157,7 +96,7 @@ gaming_words = [
     " rpg ",
     " dayz ",
     " ps3 ",
-    " wii "
+    " wii ",
 ]
 
 ai_words = [
@@ -171,26 +110,20 @@ ai_words = [
     " machine learning ",
     " ai model ",
     " generative ai ",
-    " ai "
+    " ai ",
 ]
 
-if any(
-    word in text
-    for word in gaming_words
-):
+if any(word in text for word in gaming_words):
     return "Gaming"
 
-if any(
-    word in text
-    for word in ai_words
-):
+if any(word in text for word in ai_words):
     return "AI"
 
 if source in [
     "OpenAI",
     "Google AI",
     "TechCrunch AI",
-    "The Verge AI"
+    "The Verge AI",
 ]:
     return "AI"
 
@@ -200,40 +133,23 @@ if source == "PC Gamer":
 return "Technology"
 ```
 
-# ============================================================
-
-# FETCH RSS NEWS
-
-# ============================================================
-
 def fetch_news():
-
-```
 print("=" * 70)
 print("ARTICLE GENERATOR - FULL SOURCE MODE")
 print("=" * 70)
 
+```
 articles = []
 
 for source, url in RSS_FEEDS.items():
-
     print(f"Fetching RSS: {source}")
 
     try:
-
         feed = feedparser.parse(url)
 
         for item in feed.entries[:10]:
-
-            title = item.get(
-                "title",
-                ""
-            ).strip()
-
-            link = item.get(
-                "link",
-                ""
-            ).strip()
+            title = item.get("title", "").strip()
+            link = item.get("link", "").strip()
 
             if not title or not link:
                 continue
@@ -250,52 +166,34 @@ for source, url in RSS_FEEDS.items():
                 "date": date,
                 "published": item.get(
                     "published",
-                    item.get(
-                        "updated",
-                        ""
-                    )
+                    item.get("updated", "")
                 ),
                 "category": get_category(
                     title,
                     source
-                )
+                ),
             })
 
     except Exception as error:
+        print(f"ERROR fetching {source}: {error}")
 
-        print(
-            f"ERROR fetching {source}: {error}"
-        )
-
-print(
-    f"\nRAW ARTICLES: {len(articles)}"
-)
+print(f"\nRAW ARTICLES: {len(articles)}")
 
 return articles
 ```
 
-# ============================================================
-
-# REMOVE DUPLICATES
-
-# ============================================================
-
 def remove_duplicates(articles):
-
-```
 unique = []
 
+```
 for article in articles:
-
     duplicate = False
 
     for existing in unique:
-
         if similarity_score(
             article["title"],
             existing["title"]
         ) >= 0.60:
-
             duplicate = True
             break
 
@@ -303,56 +201,35 @@ for article in articles:
         unique.append(article)
 
 print(
-    f"AFTER DUPLICATE FILTER: "
-    f"{len(unique)}"
+    f"AFTER DUPLICATE FILTER: {len(unique)}"
 )
 
 return unique
 ```
 
-# ============================================================
-
-# FILTER RECENT
-
-# ============================================================
-
 def filter_recent(articles):
+now = datetime.now(timezone.utc)
 
 ```
-now = datetime.now(
-    timezone.utc
-)
-
 result = []
 
 for article in articles:
-
     age = now - article["date"]
 
-    if age <= timedelta(
-        days=MAX_ARTICLE_AGE_DAYS
-    ):
+    if age <= timedelta(days=MAX_ARTICLE_AGE_DAYS):
         result.append(article)
 
 print(
-    f"AFTER 7-DAY FILTER: "
-    f"{len(result)}"
+    f"AFTER 7-DAY FILTER: {len(result)}"
 )
 
 return result
 ```
 
-# ============================================================
-
-# IMPORTANCE SCORE
-
-# ============================================================
-
 def score_article(article):
-
-```
 title = article["title"].lower()
 
+```
 score = 0
 
 source_scores = {
@@ -385,7 +262,6 @@ important_words = [
 ]
 
 for word in important_words:
-
     if word in title:
         score += 4
 
@@ -402,7 +278,6 @@ ai_words = [
 ]
 
 for word in ai_words:
-
     if word in title:
         score += 5
 
@@ -419,7 +294,6 @@ gaming_words = [
 ]
 
 for word in gaming_words:
-
     if word in title:
         score += 3
 
@@ -430,58 +304,35 @@ age_hours = (
 
 if age_hours < 6:
     score += 40
-
 elif age_hours < 12:
     score += 35
-
 elif age_hours < 24:
     score += 30
-
 elif age_hours < 48:
     score += 20
-
 elif age_hours < 72:
     score += 12
-
 else:
     score += 5
 
 return score
 ```
 
-# ============================================================
-
-# SELECT STORIES
-
-# ============================================================
-
 def select_articles(articles):
+for article in articles:
+article["score"] = score_article(article)
 
 ```
-for article in articles:
-
-    article["score"] = score_article(
-        article
-    )
-
 articles.sort(
     key=lambda x: x["score"],
     reverse=True
 )
 
 selected = []
-
 source_count = {}
 
-# First: guarantee category diversity
-
-for category in [
-    "AI",
-    "Gaming"
-]:
-
+for category in ["AI", "Gaming"]:
     for article in articles:
-
         if article in selected:
             continue
 
@@ -490,45 +341,30 @@ for category in [
 
         source = article["source"]
 
-        if source_count.get(
-            source,
-            0
-        ) >= 2:
+        if source_count.get(source, 0) >= 2:
             continue
 
         selected.append(article)
 
         source_count[source] = (
-            source_count.get(
-                source,
-                0
-            ) + 1
+            source_count.get(source, 0) + 1
         )
 
         break
 
-# Fill remaining slots
-
 for article in articles:
-
     if article in selected:
         continue
 
     source = article["source"]
 
-    if source_count.get(
-        source,
-        0
-    ) >= 2:
+    if source_count.get(source, 0) >= 2:
         continue
 
     selected.append(article)
 
     source_count[source] = (
-        source_count.get(
-            source,
-            0
-        ) + 1
+        source_count.get(source, 0) + 1
     )
 
     if len(selected) >= ARTICLES_PER_RUN:
@@ -537,19 +373,10 @@ for article in articles:
 return selected
 ```
 
-# ============================================================
-
-# READ SOURCE PAGE
-
-# ============================================================
-
 def read_source_page(url):
+print(f"\nReading source page: {url}")
 
 ```
-print(
-    f"\nReading source page: {url}"
-)
-
 headers = {
     "User-Agent": (
         "Mozilla/5.0 "
@@ -561,7 +388,6 @@ headers = {
 }
 
 try:
-
     response = requests.get(
         url,
         headers=headers,
@@ -583,28 +409,22 @@ try:
         "header",
         "aside",
         "form",
-        "noscript"
+        "noscript",
     ]):
         element.decompose()
 
     paragraphs = []
 
-    for paragraph in soup.find_all(
-        "p"
-    ):
-
+    for paragraph in soup.find_all("p"):
         text = paragraph.get_text(
             " ",
             strip=True
         )
 
         if len(text) >= 40:
-
             paragraphs.append(text)
 
-    text = "\n\n".join(
-        paragraphs
-    )
+    text = "\n\n".join(paragraphs)
 
     text = re.sub(
         r"\n{3,}",
@@ -615,20 +435,15 @@ try:
     text = text.strip()
 
     if len(text) > MAX_SOURCE_CHARS:
-
-        text = text[
-            :MAX_SOURCE_CHARS
-        ]
+        text = text[:MAX_SOURCE_CHARS]
 
     print(
-        f"Source text extracted: "
-        f"{len(text)} characters"
+        f"Source text extracted: {len(text)} characters"
     )
 
     return text
 
 except Exception as error:
-
     print(
         f"SOURCE PAGE ERROR: {error}"
     )
@@ -636,42 +451,26 @@ except Exception as error:
     return ""
 ```
 
-# ============================================================
-
-# GEMINI PROMPT
-
-# ============================================================
-
-def build_prompt(
-article,
-source_text
-):
-
-```
+def build_prompt(article, source_text):
 return f"""
-```
+You are the senior Persian editor of a professional technology and gaming news website.
 
-You are the senior Persian editor of a professional
-technology and gaming news website.
+Write an ORIGINAL Persian news article based ONLY on the source information provided below.
 
-Write an ORIGINAL Persian news article based ONLY
-on the source information provided below.
+IMPORTANT RULES:
 
-IMPORTANT:
-
-* Do NOT translate word-for-word.
-* Do NOT invent facts.
-* Do NOT add unsupported claims.
-* Do NOT fabricate quotes.
-* Do NOT pretend to know information that is not in the source.
-* Clearly distinguish facts from opinions.
-* Preserve important technical names in English where useful.
-* Write fluent, natural and modern Persian.
-* Avoid clickbait.
-* Do not mention that you are an AI.
-* Do not mention these instructions.
-* Do not copy sentences from the source.
-* The article should read like professional Persian journalism.
+1. Write fluent, natural and modern Persian.
+2. Do NOT translate word-for-word.
+3. Do NOT invent facts.
+4. Do NOT add unsupported claims.
+5. Do NOT fabricate quotes.
+6. Clearly distinguish facts from opinions.
+7. Preserve important technical and product names in English when useful.
+8. Avoid clickbait.
+9. Do not mention that you are an AI.
+10. Do not mention these instructions.
+11. Do not copy sentences from the source.
+12. The result must feel like professional Persian journalism.
 
 SOURCE:
 {article["source"]}
@@ -697,8 +496,7 @@ SUMMARY:
 A concise 2-3 sentence Persian summary.
 
 ARTICLE:
-Write a complete Persian news article of approximately
-500-800 words.
+A complete Persian news article of approximately 500-800 words.
 
 SEO_TITLE:
 A Persian SEO title under 60 characters.
@@ -710,26 +508,12 @@ TAGS:
 5 to 8 relevant Persian or English tags separated by commas.
 """
 
-# ============================================================
-
-# GENERATE WITH RETRIES
-
-# ============================================================
-
-def generate_article(
-client,
-article,
-source_text
-):
+def generate_article(client, article, source_text):
+print("\n" + "-" * 70)
 
 ```
 print(
-    "\n" + "-" * 70
-)
-
-print(
-    f"Generating: "
-    f"{article['title']}"
+    f"Generating: {article['title']}"
 )
 
 prompt = build_prompt(
@@ -741,57 +525,41 @@ for attempt in range(
     1,
     MAX_RETRIES + 1
 ):
-
     try:
-
         response = client.models.generate_content(
             model=GEMINI_MODEL,
             contents=prompt
         )
 
         if response and response.text:
-
             return response.text.strip()
 
         print(
-            "Gemini returned empty response."
+            "Gemini returned an empty response."
         )
 
     except Exception as error:
-
         print(
             f"Gemini ERROR "
-            f"(attempt {attempt}/{MAX_RETRIES}): "
-            f"{error}"
+            f"(attempt {attempt}/{MAX_RETRIES}): {error}"
         )
 
         if attempt < MAX_RETRIES:
-
             print(
-                f"Retrying in "
-                f"{RETRY_DELAY} seconds..."
+                f"Retrying in {RETRY_DELAY} seconds..."
             )
 
-            time.sleep(
-                RETRY_DELAY
-            )
+            time.sleep(RETRY_DELAY)
 
 return None
 ```
 
-# ============================================================
-
-# SAFE FILENAME
-
-# ============================================================
-
 def make_filename(article):
-
-```
 title = clean_text(
-    article["title"]
+article["title"]
 )
 
+```
 words = title.split()[:10]
 
 slug = "-".join(words)
@@ -800,28 +568,16 @@ date = article["date"].strftime(
     "%Y-%m-%d"
 )
 
-return (
-    f"{date}-{slug}.md"
-)
+return f"{date}-{slug}.md"
 ```
 
-# ============================================================
-
-# SAVE ARTICLE
-
-# ============================================================
-
-def save_article(
-article,
-content
-):
-
-```
+def save_article(article, content):
 os.makedirs(
-    OUTPUT_DIR,
-    exist_ok=True
+OUTPUT_DIR,
+exist_ok=True
 )
 
+```
 filename = make_filename(
     article
 )
@@ -842,32 +598,26 @@ with open(
     )
 
     file.write(
-        f"**Source:** "
-        f"{article['source']}\n\n"
+        f"**Source:** {article['source']}\n\n"
     )
 
     file.write(
-        f"**Original URL:** "
-        f"{article['link']}\n\n"
+        f"**Original URL:** {article['link']}\n\n"
     )
 
     file.write(
-        f"**Category:** "
-        f"{article['category']}\n\n"
+        f"**Category:** {article['category']}\n\n"
     )
 
     file.write(
-        f"**Score:** "
-        f"{article['score']}\n\n"
+        f"**Score:** {article['score']}\n\n"
     )
 
     file.write(
         "---\n\n"
     )
 
-    file.write(
-        content
-    )
+    file.write(content)
 
     file.write(
         "\n\n---\n\n"
@@ -883,17 +633,10 @@ print(
 )
 ```
 
-# ============================================================
-
-# MAIN
-
-# ============================================================
-
 def main():
-
-```
 client = create_gemini_client()
 
+```
 articles = fetch_news()
 
 articles = remove_duplicates(
@@ -908,23 +651,14 @@ selected = select_articles(
     articles
 )
 
-print(
-    "\n" + "=" * 70
-)
-
-print(
-    "SELECTED STORIES"
-)
-
-print(
-    "=" * 70
-)
+print("\n" + "=" * 70)
+print("SELECTED STORIES")
+print("=" * 70)
 
 for index, article in enumerate(
     selected,
     start=1
 ):
-
     print(
         f"{index}. "
         f"[{article['category']}] "
@@ -933,11 +667,9 @@ for index, article in enumerate(
     )
 
 if not selected:
-
     print(
         "No suitable articles found."
     )
-
     return
 
 print(
@@ -947,18 +679,15 @@ print(
 generated_count = 0
 
 for article in selected:
-
     source_text = read_source_page(
         article["link"]
     )
 
     if not source_text:
-
         print(
             "Skipping article because "
             "source text could not be read."
         )
-
         continue
 
     content = generate_article(
@@ -968,7 +697,6 @@ for article in selected:
     )
 
     if content:
-
         save_article(
             article,
             content
@@ -977,25 +705,20 @@ for article in selected:
         generated_count += 1
 
     else:
-
         print(
             "Article generation failed."
         )
 
     time.sleep(2)
 
-print(
-    "\n" + "=" * 70
-)
+print("\n" + "=" * 70)
 
 print(
     f"ARTICLE GENERATION COMPLETE: "
     f"{generated_count}/{len(selected)}"
 )
 
-print(
-    "=" * 70
-)
+print("=" * 70)
 ```
 
 if **name** == "**main**":
