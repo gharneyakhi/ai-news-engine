@@ -1,5 +1,7 @@
+import os
 import feedparser
-from datetime import datetime, timezone, timedelta
+
+from google import genai
 
 
 RSS_FEEDS = {
@@ -9,6 +11,26 @@ RSS_FEEDS = {
     "The Verge AI": "https://www.theverge.com/rss/ai-artificial-intelligence/index.xml",
     "PC Gamer": "https://www.pcgamer.com/rss/",
 }
+
+
+GEMINI_MODEL = "gemini-3.6-flash"
+
+
+def create_client():
+
+    api_key = os.environ.get(
+        "GEMINI_API_KEY"
+    )
+
+    if not api_key:
+        raise RuntimeError(
+            "Missing GEMINI_API_KEY"
+        )
+
+    return genai.Client(
+        api_key=api_key
+    )
+
 
 
 def fetch_news():
@@ -21,106 +43,95 @@ def fetch_news():
 
         feed = feedparser.parse(url)
 
-        for item in feed.entries[:10]:
+        for item in feed.entries[:5]:
 
-            title = item.get("title", "")
-            link = item.get("link", "")
+            title = item.get(
+                "title",
+                ""
+            )
+
+            link = item.get(
+                "link",
+                ""
+            )
 
             if title and link:
 
                 articles.append({
                     "source": source,
                     "title": title,
-                    "link": link,
-                    "score": 0
+                    "link": link
                 })
 
     return articles
 
 
 
-def score_article(article):
+def generate_article(
+    client,
+    article
+):
 
-    title = article["title"].lower()
+    prompt = f"""
+Write a Persian technology news article.
 
-    score = 0
+Title:
+{article['title']}
 
-    important_words = [
-        "openai",
-        "gemini",
-        "ai",
-        "launch",
-        "new",
-        "release",
-        "announced",
-        "model"
-    ]
+Source:
+{article['source']}
 
-    for word in important_words:
+URL:
+{article['link']}
 
-        if word in title:
-            score += 5
-
-
-    if article["source"] in [
-        "OpenAI",
-        "Google AI"
-    ]:
-        score += 10
+Rules:
+- Write natural Persian.
+- Do not invent facts.
+- Write like a professional news website.
+- Include headline and summary.
+"""
 
 
-    return score
-
-
-
-def select_top_articles(articles):
-
-    for article in articles:
-
-        article["score"] = score_article(article)
-
-
-    articles.sort(
-        key=lambda x: x["score"],
-        reverse=True
+    response = client.models.generate_content(
+        model=GEMINI_MODEL,
+        contents=prompt
     )
 
 
-    return articles[:3]
+    return response.text
 
 
 
 def main():
 
     print("=" * 60)
-    print("SMART NEWS SELECTION")
+    print("AI ARTICLE GENERATOR TEST")
     print("=" * 60)
+
+
+    client = create_client()
 
 
     articles = fetch_news()
 
 
-    selected = select_top_articles(
-        articles
+    article = articles[0]
+
+
+    print(
+        "Generating:",
+        article["title"]
+    )
+
+
+    result = generate_article(
+        client,
+        article
     )
 
 
     print()
-    print("TOP STORIES")
-    print("=" * 60)
-
-
-    for i, article in enumerate(
-        selected,
-        start=1
-    ):
-
-        print(
-            i,
-            article["score"],
-            article["source"],
-            article["title"]
-        )
+    print(result)
 
 
 
